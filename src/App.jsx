@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import { supabase } from './lib/supabase'
 import AuthPage from './components/AuthPage'
+import ChatBot from './components/ChatBot'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
 
@@ -658,19 +659,13 @@ ${extractedText.slice(0, 8000)}`
 
         {/* Auth Modal */}
         {showAuth && (
-          <div
-            onClick={() => setShowAuth(false)}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
-          >
-            <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', position: 'relative' }}>
-              <button
-                onClick={() => setShowAuth(false)}
-                style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8', zIndex: 1 }}
-              >✕</button>
-              <AuthPage onSuccess={() => setShowAuth(false)} />
-            </div>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'white' }}>
+            <AuthPage onSuccess={() => setShowAuth(false)} />
           </div>
         )}
+
+        {/* Chatbot */}
+        <ChatBot />
 
         {/* Footer */}
         <footer style={{ background: 'white', borderTop: '1px solid #f1f5f9', padding: '28px 24px', textAlign: 'center' }}>
