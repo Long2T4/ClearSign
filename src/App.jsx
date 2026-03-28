@@ -197,6 +197,7 @@ export default function App() {
   const [dragOver, setDragOver] = useState(false)
   const [copied, setCopied] = useState(false)
   const [language, setLanguage] = useState('English')
+  const [showAuth, setShowAuth] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
@@ -204,12 +205,6 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  if (session === undefined) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}>
-      <p style={{ color: '#94a3b8', fontFamily: 'Nunito, sans-serif' }}>Loading...</p>
-    </div>
-  )
-  if (!session) return <AuthPage />
 
   const extractTextFromPDF = async (uploadedFile) => {
     const arrayBuffer = await uploadedFile.arrayBuffer()
@@ -389,13 +384,24 @@ ${extractedText.slice(0, 8000)}`
           <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
             <a href="#how" className="nav-link">How it works</a>
             <a href="#upload" className="nav-link">Try it free</a>
-            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 600 }}>{session.user.email}</span>
-            <button
-              onClick={() => supabase.auth.signOut()}
-              style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', padding: '6px 14px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}
-            >
-              Sign out
-            </button>
+            {session ? (
+              <>
+                <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: 600 }}>{session.user.email}</span>
+                <button
+                  onClick={() => supabase.auth.signOut()}
+                  style={{ background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '8px', padding: '6px 14px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => setShowAuth(true)}
+                style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 18px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}
+              >
+                Sign in
+              </button>
+            )}
           </div>
         </nav>
 
@@ -649,6 +655,22 @@ ${extractedText.slice(0, 8000)}`
             )
           })()}
         </div>
+
+        {/* Auth Modal */}
+        {showAuth && (
+          <div
+            onClick={() => setShowAuth(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}
+          >
+            <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '440px', position: 'relative' }}>
+              <button
+                onClick={() => setShowAuth(false)}
+                style={{ position: 'absolute', top: '16px', right: '16px', background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#94a3b8', zIndex: 1 }}
+              >✕</button>
+              <AuthPage onSuccess={() => setShowAuth(false)} />
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <footer style={{ background: 'white', borderTop: '1px solid #f1f5f9', padding: '28px 24px', textAlign: 'center' }}>

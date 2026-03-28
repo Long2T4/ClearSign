@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function AuthPage() {
+export default function AuthPage({ onSuccess }) {
   const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -18,6 +18,7 @@ export default function AuthPage() {
     if (mode === 'login') {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       if (error) setError(error.message)
+      else onSuccess?.()
     } else {
       const { error } = await supabase.auth.signUp({ email, password })
       if (error) setError(error.message)
