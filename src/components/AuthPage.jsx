@@ -50,6 +50,11 @@ export default function AuthPage({ onSuccess }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [success, setSuccess] = useState('')
+  const [mfaStep, setMfaStep] = useState(null) // { factorId, challengeId }
+  const [totpCode, setTotpCode] = useState('')
+  const [otpMode, setOtpMode] = useState(false)
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpCode, setOtpCode] = useState('')
 
   const handleAuth = async () => {
     if (!email || !password) { setError('Please enter email and password.'); return }
@@ -62,15 +67,72 @@ export default function AuthPage({ onSuccess }) {
         result = await supabase.auth.signUp({ email, password })
         if (result.error) throw result.error
         setSuccess('Account created! Check your email to confirm.')
+        setEmail('')
+        setPassword('')
       } else {
         result = await supabase.auth.signInWithPassword({ email, password })
         if (result.error) throw result.error
+        // Check if MFA is required
+        const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+        if (aalData.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
+          const { data: factors } = await supabase.auth.mfa.listFactors()
+          const totpFactor = factors.totp[0]
+          const { data: challenge } = await supabase.auth.mfa.challenge({ factorId: totpFactor.id })
+          setMfaStep({ factorId: totpFactor.id, challengeId: challenge.id })
+          setLoading(false)
+          return
+        }
         if (onSuccess) onSuccess()
+        setEmail('')
+        setPassword('')
       }
-      setEmail('')
-      setPassword('')
     } catch (err) {
       setError(err.message || 'Something went wrong.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleMfaVerify = async () => {
+    if (totpCode.length !== 6) { setError('Enter the 6-digit code from your authenticator app.'); return }
+    setLoading(true)
+    setError('')
+    try {
+      const { error } = await supabase.auth.mfa.verify({ factorId: mfaStep.factorId, challengeId: mfaStep.challengeId, code: totpCode })
+      if (error) throw error
+      if (onSuccess) onSuccess()
+    } catch (err) {
+      setError(err.message || 'Invalid code.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSendOtp = async () => {
+    if (!email) { setError('Enter your email address.'); return }
+    setLoading(true)
+    setError('')
+    try {
+      const { error } = await supabase.auth.signInWithOtp({ email })
+      if (error) throw error
+      setOtpSent(true)
+    } catch (err) {
+      setError(err.message || 'Failed to send code.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleVerifyOtp = async () => {
+    if (otpCode.length !== 6) { setError('Enter the 6-digit code from your email.'); return }
+    setLoading(true)
+    setError('')
+    try {
+      const { error } = await supabase.auth.verifyOtp({ email, token: otpCode, type: 'email' })
+      if (error) throw error
+      if (onSuccess) onSuccess()
+    } catch (err) {
+      setError(err.message || 'Invalid or expired code.')
     } finally {
       setLoading(false)
     }
@@ -105,6 +167,106 @@ export default function AuthPage({ onSuccess }) {
             }}>🔍</div>
             <span style={{ fontFamily: 'Lora, serif', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>ClearSign</span>
           </div>
+
+          {/* MFA Step */}
+          {mfaStep ? (
+            <>
+              <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>Two-factor auth</h1>
+              <p style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '32px' }}>Enter the 6-digit code from your authenticator app</p>
+              {error && (
+                <div style={{ background: '#fff5f6', border: '1px solid #fda4af', borderRadius: '10px', padding: '12px 16px', color: '#be123c', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
+                  ⚠️ {error}
+                </div>
+              )}
+              <input
+                className="auth-input"
+                type="text"
+                inputMode="numeric"
+                placeholder="000000"
+                value={totpCode}
+                onChange={e => { setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6)); }}
+                onKeyDown={e => e.key === 'Enter' && handleMfaVerify()}
+                style={{ letterSpacing: '8px', textAlign: 'center', fontSize: '22px', marginBottom: '16px' }}
+              />
+              <button className="auth-btn" onClick={handleMfaVerify} disabled={loading}>
+                {loading ? '...' : 'Verify'}
+              </button>
+              <p
+                onClick={() => { setMfaStep(null); setTotpCode(''); setError('') }}
+                style={{ marginTop: '16px', fontSize: '13px', color: '#94a3b8', cursor: 'pointer', textAlign: 'center' }}
+              >
+                ← Back to sign in
+              </p>
+            </>
+          ) : otpMode ? (
+            <>
+              {otpSent ? (
+                <>
+                  <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>Check your email</h1>
+                  <p style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '8px' }}>We sent a 6-digit code to</p>
+                  <p style={{ fontSize: '14px', fontWeight: 700, color: '#2563eb', marginBottom: '32px' }}>{email}</p>
+                  {error && (
+                    <div style={{ background: '#fff5f6', border: '1px solid #fda4af', borderRadius: '10px', padding: '12px 16px', color: '#be123c', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
+                      ⚠️ {error}
+                    </div>
+                  )}
+                  <input
+                    className="auth-input"
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="000000"
+                    value={otpCode}
+                    onChange={e => { setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setError('') }}
+                    onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()}
+                    style={{ letterSpacing: '8px', textAlign: 'center', fontSize: '22px', marginBottom: '16px' }}
+                  />
+                  <button className="auth-btn" onClick={handleVerifyOtp} disabled={loading} style={{ marginBottom: '12px' }}>
+                    {loading ? '...' : 'Verify Code'}
+                  </button>
+                  <p
+                    onClick={() => { if (!loading) handleSendOtp() }}
+                    style={{ fontSize: '13px', color: '#64748b', cursor: 'pointer', textAlign: 'center', marginBottom: '8px' }}
+                  >
+                    Didn't get it? <span style={{ color: '#2563eb', fontWeight: 700 }}>Resend</span>
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>Sign in with email</h1>
+                  <p style={{ fontSize: '14px', color: '#94a3b8', marginBottom: '32px' }}>We'll send a 6-digit code to your inbox — no password needed</p>
+                  {error && (
+                    <div style={{ background: '#fff5f6', border: '1px solid #fda4af', borderRadius: '10px', padding: '12px 16px', color: '#be123c', fontSize: '13px', fontWeight: 600, marginBottom: '16px' }}>
+                      ⚠️ {error}
+                    </div>
+                  )}
+                  <div style={{ marginBottom: '24px' }}>
+                    <label style={{ fontSize: '13px', fontWeight: 700, color: '#374151', display: 'block', marginBottom: '6px' }}>Email Address</label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '16px', color: '#94a3b8' }}>✉</span>
+                      <input
+                        className="auth-input"
+                        type="email"
+                        placeholder="johndoe@gmail.com"
+                        value={email}
+                        onChange={e => { setEmail(e.target.value); setError('') }}
+                        onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
+                      />
+                    </div>
+                  </div>
+                  <button className="auth-btn" onClick={handleSendOtp} disabled={loading} style={{ marginBottom: '12px' }}>
+                    {loading ? '...' : 'Send Code'}
+                  </button>
+                </>
+              )}
+              <p
+                onClick={() => { setOtpMode(false); setOtpSent(false); setOtpCode(''); setError('') }}
+                style={{ marginTop: '8px', fontSize: '13px', color: '#94a3b8', cursor: 'pointer', textAlign: 'center' }}
+              >
+                ← Back to sign in
+              </p>
+            </>
+          ) : (
+          <>
 
           {/* Title */}
           <h1 style={{ fontSize: '28px', fontWeight: 800, color: '#0f172a', marginBottom: '8px' }}>
@@ -192,13 +354,29 @@ export default function AuthPage({ onSuccess }) {
               background: 'white', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
               fontFamily: 'Nunito, sans-serif', display: 'flex', alignItems: 'center',
               justifyContent: 'center', gap: '10px', color: '#0f172a', transition: 'all 0.2s ease',
-              marginBottom: '20px'
+              marginBottom: '10px'
             }}
             onMouseOver={e => e.currentTarget.style.borderColor = '#2563eb'}
             onMouseOut={e => e.currentTarget.style.borderColor = '#e2e8f0'}
           >
             <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8c-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C12.955 4 4 12.955 4 24s8.955 20 20 20s20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z"/><path fill="#FF3D00" d="m6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4C16.318 4 9.656 8.337 6.306 14.691z"/><path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A11.91 11.91 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z"/><path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303a12.04 12.04 0 0 1-4.087 5.571l.003-.002l6.19 5.238C36.971 39.205 44 34 44 24c0-1.341-.138-2.65-.389-3.917z"/></svg>
             Continue with Google
+          </button>
+
+          {/* Email OTP */}
+          <button
+            onClick={() => { setOtpMode(true); setOtpSent(false); setOtpCode(''); setError('') }}
+            style={{
+              width: '100%', padding: '12px', borderRadius: '10px', border: '1.5px solid #e2e8f0',
+              background: 'white', fontSize: '14px', fontWeight: 700, cursor: 'pointer',
+              fontFamily: 'Nunito, sans-serif', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', gap: '10px', color: '#0f172a', transition: 'all 0.2s ease',
+              marginBottom: '20px'
+            }}
+            onMouseOver={e => e.currentTarget.style.borderColor = '#2563eb'}
+            onMouseOut={e => e.currentTarget.style.borderColor = '#e2e8f0'}
+          >
+            ✉ Email me a code
           </button>
 
           {/* Toggle + Forgot */}
@@ -234,6 +412,8 @@ export default function AuthPage({ onSuccess }) {
             >
               ← Continue without account
             </p>
+          )}
+          </>
           )}
         </div>
 

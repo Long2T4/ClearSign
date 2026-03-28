@@ -227,6 +227,15 @@ export default function App() {
   const [pwLoading, setPwLoading] = useState(false)
   const [pwMessage, setPwMessage] = useState('')
   const [pwError, setPwError] = useState('')
+  // MFA
+  const [mfaFactors, setMfaFactors] = useState([])
+  const [mfaEnrolling, setMfaEnrolling] = useState(false)
+  const [mfaQrCode, setMfaQrCode] = useState('')
+  const [mfaEnrollFactorId, setMfaEnrollFactorId] = useState('')
+  const [mfaCode, setMfaCode] = useState('')
+  const [mfaLoading, setMfaLoading] = useState(false)
+  const [mfaMsg, setMfaMsg] = useState('')
+  const [mfaError, setMfaError] = useState('')
   // Core
   const [file, setFile] = useState(null)
   const [extractedText, setExtractedText] = useState('')
@@ -471,6 +480,11 @@ ${extractedText.slice(0, 8000)}`
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const loadMfaFactors = async () => {
+    const { data } = await supabase.auth.mfa.listFactors()
+    setMfaFactors((data?.totp || []).filter(f => f.status === 'verified'))
+  }
+
   return (
     <>
       <style>{styles}</style>
@@ -504,7 +518,7 @@ ${extractedText.slice(0, 8000)}`
                       <p style={{ fontSize: '13px', fontWeight: 700, color: '#0f172a', marginBottom: '2px' }}>{session.user.email.split('@')[0]}</p>
                       <p style={{ fontSize: '11px', color: '#94a3b8' }}>{session.user.email}</p>
                     </div>
-                    <div className="dropdown-item" onClick={() => { setShowDropdown(false); setShowProfile(true); setPwMessage(''); setPwError('') }}>
+                    <div className="dropdown-item" onClick={() => { setShowDropdown(false); setShowProfile(true); setPwMessage(''); setPwError(''); setMfaEnrolling(false); setMfaMsg(''); setMfaError(''); loadMfaFactors() }}>
                       <span style={{ fontSize: '16px' }}>👤</span>
                       <span style={{ fontSize: '14px', fontWeight: 700, color: '#0f172a' }}>Profile</span>
                     </div>
@@ -600,7 +614,6 @@ ${extractedText.slice(0, 8000)}`
             </div>
           )}
 
-          {/* Drop Zone */}
           {!analysis && (
             <div
               className={'drop-zone fade-up-1' + (dragOver ? ' over' : '')}
@@ -632,21 +645,18 @@ ${extractedText.slice(0, 8000)}`
             </div>
           )}
 
-          {/* Error */}
           {error && (
             <div className="fade-up" style={{ background: '#fff5f6', border: '1px solid #fda4af', borderRadius: '14px', padding: '14px 18px', color: '#be123c', fontSize: '14px', fontWeight: 600, marginBottom: '16px' }}>
               ⚠️ {error}
             </div>
           )}
 
-          {/* Analyze Button */}
           {extractedText && !analysis && !loading && (
             <button className="btn-main fade-up-2" onClick={analyzeDocument}>
               🔍 Analyze My Document
             </button>
           )}
 
-          {/* Loading */}
           {loading && (
             <div className="card fade-up" style={{ textAlign: 'center', padding: '52px' }}>
               <div className="spin" style={{ width: '44px', height: '44px', border: '4px solid #e2e8f0', borderTopColor: '#2563eb', borderRadius: '50%', margin: '0 auto 20px' }} />
@@ -655,7 +665,6 @@ ${extractedText.slice(0, 8000)}`
             </div>
           )}
 
-          {/* Results */}
           {analysis && (() => {
             const sc = scoreConfig[analysis.score] || scoreConfig.YELLOW
             return (
@@ -855,10 +864,9 @@ ${extractedText.slice(0, 8000)}`
                   <p style={{ fontSize: '12px', color: '#94a3b8' }}>ClearSign account</p>
                 </div>
               </div>
-              <button
-                onClick={() => { setShowPersonalInfo(!showPersonalInfo); setPwMessage(''); setPwError(''); setCurrentPassword(''); setNewPassword('') }}
-                style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}
-              >
+
+              {/* Personal Information */}
+              <button onClick={() => { setShowPersonalInfo(!showPersonalInfo); setPwMessage(''); setPwError(''); setCurrentPassword(''); setNewPassword('') }} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>
                 <span style={{ fontSize: '13px', fontWeight: 800, color: '#374151', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Personal Information</span>
                 <span style={{ fontSize: '16px', color: '#94a3b8', transition: 'transform 0.2s', transform: showPersonalInfo ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
               </button>
@@ -886,6 +894,50 @@ ${extractedText.slice(0, 8000)}`
                   >
                     {pwLoading ? 'Updating...' : 'Update Password'}
                   </button>
+                </div>
+              )}
+
+              {/* Two-Factor Auth */}
+              <button onClick={() => { setMfaEnrolling(!mfaEnrolling); setMfaQrCode(''); setMfaCode(''); setMfaMsg(''); setMfaError('') }} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px 16px', cursor: 'pointer', fontFamily: 'Nunito, sans-serif', marginTop: '10px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 800, color: '#374151', letterSpacing: '0.5px', textTransform: 'uppercase' }}>Two-Factor Auth</span>
+                  <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '20px', background: mfaFactors.length > 0 ? '#dcfce7' : '#f1f5f9', color: mfaFactors.length > 0 ? '#15803d' : '#64748b' }}>
+                    {mfaFactors.length > 0 ? 'Enabled' : 'Off'}
+                  </span>
+                </div>
+                <span style={{ fontSize: '16px', color: '#94a3b8', transition: 'transform 0.2s', transform: mfaEnrolling ? 'rotate(180deg)' : 'rotate(0deg)' }}>▾</span>
+              </button>
+              {mfaEnrolling && (
+                <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {mfaFactors.length > 0 ? (
+                    <>
+                      <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.6 }}>Two-factor authentication is currently enabled. Your account is protected.</p>
+                      {mfaError && <p style={{ fontSize: '13px', color: '#be123c' }}>⚠️ {mfaError}</p>}
+                      {mfaMsg && <p style={{ fontSize: '13px', color: '#15803d' }}>✓ {mfaMsg}</p>}
+                      <button onClick={async () => { setMfaLoading(true); setMfaError(''); setMfaMsg(''); const { error } = await supabase.auth.mfa.unenroll({ factorId: mfaFactors[0].id }); if (error) setMfaError(error.message); else { setMfaMsg('Two-factor auth disabled.'); await loadMfaFactors() } setMfaLoading(false) }} disabled={mfaLoading} style={{ width: '100%', padding: '12px', background: '#fff5f6', color: '#be123c', border: '1px solid #fda4af', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}>
+                        {mfaLoading ? 'Disabling...' : 'Disable Two-Factor Auth'}
+                      </button>
+                    </>
+                  ) : mfaQrCode ? (
+                    <>
+                      <p style={{ fontSize: '13px', color: '#374151', fontWeight: 600 }}>Scan with Google Authenticator, Authy, or any authenticator app:</p>
+                      <img src={mfaQrCode} alt="MFA QR Code" style={{ width: '180px', height: '180px', alignSelf: 'center', border: '1px solid #e2e8f0', borderRadius: '10px' }} />
+                      <input type="text" inputMode="numeric" placeholder="Enter 6-digit code" value={mfaCode} onChange={e => { setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6)); setMfaError('') }} style={{ width: '100%', padding: '12px 16px', border: '1.5px solid #e2e8f0', borderRadius: '10px', fontSize: '18px', fontFamily: 'Nunito, sans-serif', outline: 'none', boxSizing: 'border-box', letterSpacing: '6px', textAlign: 'center' }} />
+                      {mfaError && <p style={{ fontSize: '13px', color: '#be123c' }}>⚠️ {mfaError}</p>}
+                      {mfaMsg && <p style={{ fontSize: '13px', color: '#15803d' }}>✓ {mfaMsg}</p>}
+                      <button onClick={async () => { if (mfaCode.length !== 6) { setMfaError('Enter the 6-digit code from your app.'); return } setMfaLoading(true); setMfaError(''); const { data: challenge, error: ce } = await supabase.auth.mfa.challenge({ factorId: mfaEnrollFactorId }); if (ce) { setMfaError(ce.message); setMfaLoading(false); return } const { error } = await supabase.auth.mfa.verify({ factorId: mfaEnrollFactorId, challengeId: challenge.id, code: mfaCode }); if (error) setMfaError(error.message); else { setMfaMsg('Two-factor auth enabled!'); setMfaQrCode(''); setMfaCode(''); await loadMfaFactors() } setMfaLoading(false) }} disabled={mfaLoading} style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif', opacity: mfaLoading ? 0.6 : 1 }}>
+                        {mfaLoading ? 'Verifying...' : 'Verify & Enable MFA'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <p style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.6 }}>Add an extra layer of security. You'll need a code from your authenticator app each time you sign in.</p>
+                      {mfaError && <p style={{ fontSize: '13px', color: '#be123c' }}>⚠️ {mfaError}</p>}
+                      <button onClick={async () => { setMfaLoading(true); setMfaError(''); const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' }); if (error) setMfaError(error.message); else { setMfaQrCode(data.totp.qr_code); setMfaEnrollFactorId(data.id) } setMfaLoading(false) }} disabled={mfaLoading} style={{ width: '100%', padding: '12px', background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white', border: 'none', borderRadius: '10px', fontSize: '14px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif', opacity: mfaLoading ? 0.6 : 1 }}>
+                        {mfaLoading ? 'Setting up...' : 'Enable Two-Factor Auth'}
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
