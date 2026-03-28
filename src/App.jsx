@@ -1,11 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
+import { supabase } from './lib/supabase'
+import AuthPage from './components/AuthPage'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.mjs'
-const API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY
-console.log('API KEY:', import.meta.env.VITE_ANTHROPIC_API_KEY)
 
 function App() {
+  const [session, setSession] = useState(undefined)
   const [file, setFile] = useState(null)
   const [extractedText, setExtractedText] = useState('')
   const [analysis, setAnalysis] = useState(null)
@@ -14,6 +15,21 @@ function App() {
   const [disputeLetter, setDisputeLetter] = useState('')
   const [loadingLetter, setLoadingLetter] = useState(false)
   const [dragOver, setDragOver] = useState(false)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  if (session === undefined) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <p className="text-gray-400">Loading...</p>
+    </div>
+  )
+  if (!session) return <AuthPage />
 
   const extractTextFromPDF = async (file) => {
     const arrayBuffer = await file.arrayBuffer()
@@ -188,11 +204,22 @@ Just write the letter, no explanation needed.`
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow-sm border-b">
-        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center gap-3">
-          <span className="text-3xl">🔍</span>
-          <div>
-            <h1 className="text-2xl font-bold text-blue-600">ClearSign</h1>
-            <p className="text-sm text-gray-500">Understand any document before you sign</p>
+        <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">🔍</span>
+            <div>
+              <h1 className="text-2xl font-bold text-blue-600">ClearSign</h1>
+              <p className="text-sm text-gray-500">Understand any document before you sign</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-400">{session.user.email}</span>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="text-sm text-gray-500 hover:text-gray-700 bg-gray-100 hover:bg-gray-200 px-3 py-1.5 rounded-lg transition-all"
+            >
+              Sign out
+            </button>
           </div>
         </div>
       </div>
