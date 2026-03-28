@@ -201,9 +201,18 @@ export default function App() {
   const [showAuth, setShowAuth] = useState(false)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setSession(session))
-    return () => subscription.unsubscribe()
+  // Auth session
+  supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => setSession(session))
+
+  // Browser back button
+  const handlePopState = () => setShowAuth(false)
+  window.addEventListener('popstate', handlePopState)
+
+  return () => {
+    subscription.unsubscribe()
+    window.removeEventListener('popstate', handlePopState)
+    }
   }, [])
 
 
@@ -378,7 +387,10 @@ ${extractedText.slice(0, 8000)}`
           zIndex: 100,
           boxShadow: '0 1px 8px rgba(0,0,0,0.04)'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div
+            onClick={() => { setShowAuth(false); handleReset(); }}
+            style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}
+          >
             <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: 'linear-gradient(135deg, #2563eb, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>🔍</div>
             <span style={{ fontFamily: 'Lora, serif', fontSize: '20px', fontWeight: 700, color: '#0f172a' }}>ClearSign</span>
           </div>
@@ -397,7 +409,7 @@ ${extractedText.slice(0, 8000)}`
               </>
             ) : (
               <button
-                onClick={() => setShowAuth(true)}
+                onClick={() => { setShowAuth(true); window.history.pushState({}, '', '/login') }}
                 style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 18px', fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: 'Nunito, sans-serif' }}
               >
                 Sign in
