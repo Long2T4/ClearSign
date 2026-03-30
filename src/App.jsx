@@ -254,6 +254,9 @@ export default function App() {
   const [history, setHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [selectedHistory, setSelectedHistory] = useState(null)
+  const [submissionId, setSubmissionId] = useState(null)
+  const [historyLetterLoading, setHistoryLetterLoading] = useState(false)
+  const [historyCopied, setHistoryCopied] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session))
@@ -332,13 +335,14 @@ export default function App() {
   const saveToHistory = async (analysisResult) => {
     if (!session) return
     try {
-      await supabase.from('submissions').insert({
+      const { data } = await supabase.from('submissions').insert({
         user_id: session.user.id,
         file_name: file?.name || 'Unknown',
         document_type: analysisResult.documentType,
         score: analysisResult.score,
         analysis: analysisResult,
-      })
+      }).select('id').single()
+      if (data) setSubmissionId(data.id)
     } catch (err) { console.error('Failed to save history:', err) }
   }
 
@@ -458,11 +462,48 @@ ${extractedText.slice(0, 8000)}`
         })
       })
       const data = await res.json()
-      setDisputeLetter(data.content[0].text)
+      const letter = data.content[0].text
+      setDisputeLetter(letter)
+      if (session && submissionId) {
+        await supabase.from('submissions').update({ dispute_letter: letter }).eq('id', submissionId)
+      }
     } catch {
       setError('Failed to generate letter.')
     } finally {
       setLoadingLetter(false)
+    }
+  }
+
+  const generateLetterForHistory = async (historyItem) => {
+    setHistoryLetterLoading(true)
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': API_KEY,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 1000,
+          messages: [{
+            role: 'user',
+            content: 'Write a professional dispute letter for a ' + historyItem.document_type + ' addressing these red flags: ' + JSON.stringify(historyItem.analysis.redFlags) + '. Be firm, professional, and specific. Just write the letter.'
+          }]
+        })
+      })
+      const data = await res.json()
+      const letter = data.content[0].text
+      await supabase.from('submissions').update({ dispute_letter: letter }).eq('id', historyItem.id)
+      const updated = { ...historyItem, dispute_letter: letter }
+      setSelectedHistory(updated)
+      setHistory(prev => prev.map(h => h.id === historyItem.id ? updated : h))
+    } catch {
+      // silent — user can retry
+    } finally {
+      setHistoryLetterLoading(false)
     }
   }
 
@@ -472,6 +513,7 @@ ${extractedText.slice(0, 8000)}`
     setAnalysis(null)
     setDisputeLetter('')
     setError('')
+    setSubmissionId(null)
   }
 
   const handleCopy = () => {
@@ -812,7 +854,7 @@ ${extractedText.slice(0, 8000)}`
                       </div>
                     )}
                     {selectedHistory.analysis?.actionItems?.length > 0 && (
-                      <div style={{ background: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #f1f5f9' }}>
+                      <div style={{ background: 'white', borderRadius: '14px', padding: '20px', marginBottom: '12px', border: '1px solid #f1f5f9' }}>
                         <p style={{ fontSize: '12px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '12px' }}>👉 Action Items</p>
                         {selectedHistory.analysis.actionItems.map((item, i) => (
                           <div key={i} style={{ display: 'flex', gap: '10px', fontSize: '13px', color: '#475569', alignItems: 'flex-start', marginBottom: '8px' }}>
@@ -821,6 +863,21 @@ ${extractedText.slice(0, 8000)}`
                           </div>
                         ))}
                       </div>
+                    )}
+                    {selectedHistory.dispute_letter ? (
+                      <div style={{ background: 'white', borderRadius: '14px', padding: '20px', border: '1px solid #f1f5f9' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <p style={{ fontSize: '12px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '1px' }}>📝 Dispute Letter</p>
+                          <button className={'btn-copy' + (historyCopied ? ' copied' : '')} onClick={() => { navigator.clipboard.writeText(selectedHistory.dispute_letter); setHistoryCopied(true); setTimeout(() => setHistoryCopied(false), 2000) }}>
+                            {historyCopied ? '✓ Copied!' : 'Copy'}
+                          </button>
+                        </div>
+                        <pre style={{ fontSize: '13px', color: '#475569', whiteSpace: 'pre-wrap', fontFamily: 'Nunito, sans-serif', lineHeight: 1.7 }}>{selectedHistory.dispute_letter}</pre>
+                      </div>
+                    ) : selectedHistory.analysis?.redFlags?.length > 0 && (
+                      <button className="btn-dispute" onClick={() => generateLetterForHistory(selectedHistory)} disabled={historyLetterLoading} style={{ width: '100%' }}>
+                        {historyLetterLoading ? '✍️ Writing your letter...' : '📝 Generate Dispute Letter'}
+                      </button>
                     )}
                   </div>
                 ) : (
